@@ -1,0 +1,1861 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { InvokeLLM } from '@/integrations/Core';
+
+export default function PariPoint() {
+  // App State
+  const [appState, setAppState] = useState({
+    currentStreak: 0,
+    lastCompletion: null,
+    currentMonth: new Date().getMonth(),
+    currentYear: new Date().getFullYear(),
+    currentTool: 'pen',
+    isDrawing: false,
+    fillMode: false,
+    brushSize: 5,
+    opacity: 100,
+    sheetMusic: [],
+    canvasHistory: [],
+    historyIndex: -1,
+    startX: 0,
+    startY: 0,
+    rhythmPlaying: false,
+    rhythmInterval: null,
+    audioContext: null
+  });
+
+  const [modals, setModals] = useState({
+    piano: false,
+    news: false,
+    rhyme: false,
+    art: false,
+    calendar: false
+  });
+
+  const [poetryState, setPoetryStat] = useState({
+    text: '',
+    selectedWord: '',
+    results: null,
+    isLoading: false,
+    error: ''
+  });
+
+  const [newsState, setNewsState] = useState({
+    headlines: [],
+    isLoading: false,
+    inputs: {}
+  });
+
+  const [pianoState, setPianoState] = useState({
+    currentOctave: 4,
+    isRecording: false,
+    recordedNotes: [],
+    isPlaying: false,
+    sustainPedal: false
+  });
+
+  const [rhythmState, setRhythmState] = useState({
+    isPlaying: false,
+    currentBPM: 120,
+    currentRhythm: 'basic',
+    beatCount: 0,
+    interval: null
+  });
+
+  const [artState, setArtState] = useState({
+    currentColor: '#FF69B4',
+    brushSize: 10,
+    tool: 'brush',
+    isDrawing: false,
+    lastX: 0,
+    lastY: 0
+  });
+
+  const canvasRef = useRef(null);
+  const videoRef = useRef(null);
+
+  // Enhanced compliments arrays
+  const dailyCompliments = [
+    "Your smile could light up the entire universe! ✨🌟",
+    "You have the most beautiful soul I've ever encountered! 💖👼",
+    "Your creativity flows like a magical river! 🎨🌊",
+    "The way you move makes the whole world dance! 💃🌍",
+    "Your inner light shines brighter than a thousand stars! ⭐✨",
+    "You're a masterpiece painted by the universe itself! 🖼️🎭",
+    "Your kindness creates ripples of joy everywhere! 🌸🦋",
+    "You're not just special - you're absolutely extraordinary! 🦄💫",
+    "Your energy could power a city with pure happiness! ⚡🏙️",
+    "You bring magic to every moment you touch! 🪄✨",
+    "Your heart is a garden where beautiful dreams grow! 🌺🌻",
+    "You're living proof that angels exist! 👼💕",
+    "Your laughter is the most beautiful symphony! 🎵🎶",
+    "You turn ordinary days into fairy tales! 🧚‍♀️📚",
+    "Your spirit dances with the rhythm of pure joy! 💃🎭"
+  ];
+
+  const randomCompliments = [
+    "You're absolutely magical in every single way! ✨🔮",
+    "Your spirit sparkles like diamond dust! 💎⭐",
+    "You have the power to make dreams come alive! 🌙💫",
+    "Your presence turns gray skies into rainbows! 🌈☀️",
+    "You're a walking, breathing miracle! 🙏✨",
+    "Your wisdom amazes everyone lucky enough to know you! 🦉📚",
+    "You're stronger than mountains and gentler than flowers! 🏔️🌸",
+    "Your compassion heals hearts across the universe! ❤️🌍",
+    "You make impossible dreams feel possible! 🚀🌟",
+    "Your uniqueness is your greatest superpower! 🦸‍♀️💥"
+  ];
+
+  // Special dates with enhanced messages
+  const specialDates = {
+    '8-9': {
+      emoji: '🐰',
+      title: 'Happy Raksha Bandhan! 🎀',
+      message: 'To the most amazing sister in the entire universe! You make every day brighter with your love, laughter, and endless magic. I love you more than all the stars in the sky! 💖✨🌟'
+    },
+    '1-21': {
+      emoji: '🎂',
+      title: "It's Pari's Birthday! 🎉",
+      message: 'Happy Birthday to the most wonderful person ever! Today is all about celebrating YOU - your kindness, your creativity, your beautiful soul, and all the magic you bring to this world! 🎈🎊💕'
+    },
+    '8-15': {
+      emoji: '🇮🇳',
+      title: 'Happy Independence Day! 🎯',
+      message: 'Your spirit is as free and beautiful as our great nation! Keep soaring high and inspiring everyone around you! 🦅✨'
+    },
+    '10-31': {
+      emoji: '🎃',
+      title: 'Happy Halloween! 👻',
+      message: "You're spook-tacularly amazing! Even ghosts would be jealous of how you light up every room! 🕯️👻"
+    },
+    '12-25': {
+      emoji: '🎄',
+      title: 'Merry Christmas! 🎅',
+      message: "You're the best gift the world has ever received! Your love and joy make every day feel like Christmas! 🎁❄️"
+    },
+    '1-1': {
+      emoji: '🎊',
+      title: 'Happy New Year! 🥳',
+      message: 'This year will be absolutely magical because amazing people like you make the world brighter! Here to new adventures! 🎆✨'
+    }
+  };
+
+  // Enhanced Piano note frequencies with multiple octaves
+  const noteFrequencies = {
+    'C': 261.63, 'C#': 277.18, 'D': 293.66, 'D#': 311.13, 'E': 329.63,
+    'F': 349.23, 'F#': 369.99, 'G': 392.00, 'G#': 415.30, 'A': 440.00,
+    'A#': 466.16, 'B': 493.88
+  };
+
+  // Enhanced Piano Wave Types for different tones
+  const pianoTones = {
+    'Grand Piano': 'sine',
+    'Electric Piano': 'square', 
+    'Organ': 'sawtooth',
+    'Synthesizer': 'triangle',
+    'Bell': 'sine',
+    'Strings': 'sawtooth'
+  };
+
+  const [selectedTone, setSelectedTone] = useState('Grand Piano');
+
+  // Rhythm patterns
+  const rhythmPatterns = {
+    'basic': [1, 0, 1, 0], // Basic kick-snare
+    'rock': [1, 0, 1, 1], // Rock beat
+    'jazz': [1, 0, 0, 1], // Jazz swing
+    'latin': [1, 1, 0, 1], // Latin groove
+    'funk': [1, 0, 1, 0, 1, 0, 0, 1], // Funk pattern
+    'waltz': [1, 0, 0] // 3/4 time
+  };
+
+  // Art tools and colors
+  const artTools = ['brush', 'pencil', 'eraser', 'fill'];
+  const artColors = [
+    '#FF69B4', '#FF1493', '#9966FF', '#00BFFF', '#32CD32', 
+    '#FFD700', '#FF4500', '#8A2BE2', '#DC143C', '#00CED1',
+    '#FF6347', '#98FB98', '#F0E68C', '#DDA0DD', '#87CEEB'
+  ];
+
+  // Initialize app
+  useEffect(() => {
+    checkSpecialDate();
+    showDailyCompliment();
+    updateStreakDisplay();
+    loadLiveNews();
+    initializeAudioContext();
+  }, []);
+
+  // Initialize Audio Context for Piano
+  const initializeAudioContext = () => {
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      const audioCtx = new AudioContext();
+      setAppState(prev => ({ ...prev, audioContext: audioCtx }));
+    } catch (error) {
+      console.log('Web Audio API not supported');
+    }
+  };
+
+  // Enhanced Piano functions with multiple tones and effects
+  const playNote = (note, octave = pianoState.currentOctave) => {
+    if (!appState.audioContext) return;
+    
+    const frequency = noteFrequencies[note] * Math.pow(2, octave - 4);
+    const oscillator = appState.audioContext.createOscillator();
+    const gainNode = appState.audioContext.createGain();
+    const filterNode = appState.audioContext.createBiquadFilter();
+    
+    // Enhanced audio routing with filter
+    oscillator.connect(filterNode);
+    filterNode.connect(gainNode);
+    gainNode.connect(appState.audioContext.destination);
+    
+    oscillator.frequency.value = frequency;
+    oscillator.type = pianoTones[selectedTone];
+    
+    // Enhanced tone characteristics based on selection
+    switch(selectedTone) {
+      case 'Grand Piano':
+        filterNode.type = 'lowpass';
+        filterNode.frequency.value = 2000;
+        break;
+      case 'Electric Piano':
+        filterNode.type = 'bandpass';
+        filterNode.frequency.value = 1000;
+        break;
+      case 'Organ':
+        filterNode.type = 'highpass';
+        filterNode.frequency.value = 200;
+        break;
+      case 'Bell':
+        filterNode.type = 'peaking';
+        filterNode.frequency.value = 2000;
+        filterNode.gain.value = 10;
+        break;
+      default:
+        filterNode.type = 'lowpass';
+        filterNode.frequency.value = 1500;
+    }
+    
+    // Enhanced envelope
+    gainNode.gain.setValueAtTime(0, appState.audioContext.currentTime);
+    gainNode.gain.linearRampToValueAtTime(0.4, appState.audioContext.currentTime + 0.01);
+    gainNode.gain.exponentialRampToValueAtTime(0.3, appState.audioContext.currentTime + 0.1);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, appState.audioContext.currentTime + 2);
+    
+    oscillator.start(appState.audioContext.currentTime);
+    oscillator.stop(appState.audioContext.currentTime + 2);
+
+    // Visual sparkle effect
+    createPianoSparkle(note);
+
+    // Recording functionality
+    if (pianoState.isRecording) {
+      setPianoState(prev => ({
+        ...prev,
+        recordedNotes: [...prev.recordedNotes, { note, octave, time: Date.now(), tone: selectedTone }]
+      }));
+    }
+  };
+
+  // Visual sparkle effect for piano
+  const createPianoSparkle = (note) => {
+    console.log(`✨ Playing ${note} with sparkles! ✨`);
+  };
+
+  // Rhythm functions
+  const playRhythmBeat = (isAccent = false) => {
+    if (!appState.audioContext) return;
+    
+    const oscillator = appState.audioContext.createOscillator();
+    const gainNode = appState.audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(appState.audioContext.destination);
+    
+    // Different frequencies for accent vs normal beats
+    oscillator.frequency.value = isAccent ? 800 : 400;
+    oscillator.type = 'square';
+    
+    gainNode.gain.setValueAtTime(0, appState.audioContext.currentTime);
+    gainNode.gain.linearRampToValueAtTime(isAccent ? 0.3 : 0.2, appState.audioContext.currentTime + 0.01);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, appState.audioContext.currentTime + 0.1);
+    
+    oscillator.start(appState.audioContext.currentTime);
+    oscillator.stop(appState.audioContext.currentTime + 0.1);
+  };
+
+  const startRhythm = () => {
+    if (rhythmState.isPlaying) return;
+    
+    const pattern = rhythmPatterns[rhythmState.currentRhythm];
+    const beatInterval = 60000 / rhythmState.currentBPM; // ms per beat
+    
+    setRhythmState(prev => ({ ...prev, isPlaying: true, beatCount: 0 }));
+    
+    const interval = setInterval(() => {
+      setRhythmState(prev => {
+        const newBeatCount = (prev.beatCount + 1) % pattern.length;
+        const shouldPlay = pattern[prev.beatCount];
+        const isAccent = prev.beatCount === 0; // First beat is accent
+        
+        if (shouldPlay) {
+          playRhythmBeat(isAccent);
+        }
+        
+        return { ...prev, beatCount: newBeatCount };
+      });
+    }, beatInterval);
+    
+    setRhythmState(prev => ({ ...prev, interval }));
+  };
+
+  const stopRhythm = () => {
+    if (rhythmState.interval) {
+      clearInterval(rhythmState.interval);
+    }
+    setRhythmState(prev => ({ ...prev, isPlaying: false, interval: null, beatCount: 0 }));
+  };
+
+  const playRecordedNotes = () => {
+    if (pianoState.recordedNotes.length === 0) return;
+    
+    setPianoState(prev => ({ ...prev, isPlaying: true }));
+    const startTime = pianoState.recordedNotes[0].time;
+    
+    pianoState.recordedNotes.forEach(({ note, octave, time, tone }) => {
+      setTimeout(() => {
+        const oldTone = selectedTone;
+        setSelectedTone(tone || 'Grand Piano');
+        playNote(note, octave);
+        setTimeout(() => setSelectedTone(oldTone), 100);
+      }, time - startTime);
+    });
+    
+    setTimeout(() => {
+      setPianoState(prev => ({ ...prev, isPlaying: false }));
+    }, pianoState.recordedNotes[pianoState.recordedNotes.length - 1].time - startTime + 2000);
+  };
+
+  // Art functions with touch support
+  const getEventPosition = (e) => {
+    if (!canvasRef.current) return { x: 0, y: 0 };
+    
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    
+    let clientX, clientY;
+    if (e.touches && e.touches.length > 0) {
+      // Touch event
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      // Mouse event
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+    
+    return {
+      x: clientX - rect.left,
+      y: clientY - rect.top
+    };
+  };
+
+  const startDrawing = (e) => {
+    e.preventDefault(); // Prevent default touch behavior (scrolling/zooming)
+    const { x, y } = getEventPosition(e);
+    
+    setArtState(prev => ({
+      ...prev,
+      isDrawing: true,
+      lastX: x,
+      lastY: y
+    }));
+  };
+
+  const draw = (e) => {
+    e.preventDefault(); // Prevent default touch behavior
+    if (!artState.isDrawing || !canvasRef.current) return;
+    
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const { x, y } = getEventPosition(e);
+    
+    ctx.beginPath();
+    ctx.moveTo(artState.lastX, artState.lastY);
+    ctx.lineTo(x, y);
+
+    if (artState.tool === 'eraser') {
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = artState.brushSize * 2;
+      ctx.globalCompositeOperation = 'destination-out';
+    } else {
+      ctx.strokeStyle = artState.currentColor;
+      ctx.lineWidth = artState.brushSize;
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+    
+    setArtState(prev => ({
+      ...prev,
+      lastX: x,
+      lastY: y
+    }));
+  };
+
+  const stopDrawing = (e) => {
+    e.preventDefault(); // Prevent default touch behavior
+    setArtState(prev => ({ ...prev, isDrawing: false }));
+    if (canvasRef.current) {
+      const ctx = canvasRef.current.getContext('2d');
+      ctx.globalCompositeOperation = 'source-over';
+    }
+  };
+
+  const clearCanvas = () => {
+    if (!canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  };
+
+  // AI-powered rhyming and synonym functions
+  const getShagunSuggestions = async (word, type) => {
+    if (!word || word.length < 2) {
+      setPoetryStat(prev => ({ ...prev, error: 'Please enter a word, my dear poet.' }));
+      return;
+    }
+
+    setPoetryStat(prev => ({ ...prev, isLoading: true, error: '', results: null }));
+
+    const rhymesPrompt = `You are Shagun, the Queen of Verses, a master poet and wordsmith. A user is looking for words that rhyme with "${word}".
+
+I need you to be EXTREMELY comprehensive. Provide at least 50+ rhyming words if they exist, including:
+1. Perfect rhymes (exact sound matches)
+2. Near rhymes (close sound matches)  
+3. Slant rhymes (partial sound matches)
+4. Eye rhymes (words that look like they should rhyme)
+
+Group them by syllable count and provide at least 10-15 words per category where possible. Include common words, poetic words, and creative options.
+
+Respond ONLY as a JSON object with this exact structure:
+{
+  "type": "rhymes",
+  "compliment": "What a wonderful word to explore! Here are extensive rhymes to ignite your creativity.",
+  "data": {
+    "1_syllable": ["word1", "word2", "word3", "word4", "word5", "word6", "word7", "word8", "word9", "word10"],
+    "2_syllables": ["word1", "word2", "word3", "word4", "word5", "word6", "word7", "word8", "word9", "word10"],
+    "3_syllables": ["word1", "word2", "word3", "word4", "word5"],
+    "4_plus_syllables": ["word1", "word2", "word3"]
+  }
+}`;
+
+    const synonymsPrompt = `You are Shagun, the Queen of Verses, a master of language and poetry. A user needs synonyms and creative inspiration for "${word}".
+
+Be EXTREMELY comprehensive. Provide:
+1. At least 20+ direct synonyms if they exist
+2. Related words and concepts  
+3. Words with similar meanings in different contexts
+4. Poetic alternatives and elevated vocabulary
+5. At least 8 creative sparks including metaphors, imagery, related concepts, and poetic associations
+
+Respond ONLY as a JSON object with this exact structure:
+{
+  "type": "synonyms", 
+  "compliment": "Excellent choice of word! Let me offer you a treasury of alternatives and inspiration.",
+  "data": {
+    "direct_synonyms": ["syn1", "syn2", "syn3", "syn4", "syn5", "syn6", "syn7", "syn8", "syn9", "syn10", "syn11", "syn12", "syn13", "syn14", "syn15"],
+    "related_words": ["rel1", "rel2", "rel3", "rel4", "rel5", "rel6", "rel7", "rel8", "rel9", "rel10"],
+    "poetic_alternatives": ["poet1", "poet2", "poet3", "poet4", "poet5"],
+    "creative_sparks": ["spark1", "spark2", "spark3", "spark4", "spark5", "spark6", "spark7", "spark8"]
+  }
+}`;
+
+    try {
+      const prompt = type === 'rhymes' ? rhymesPrompt : synonymsPrompt;
+      const response = await InvokeLLM({
+        prompt: prompt,
+        response_json_schema: { 
+          type: "object", 
+          properties: {
+            type: { type: "string" },
+            compliment: { type: "string" },
+            data: { type: "object" }
+          }
+        }
+      });
+
+      if (response && response.data) {
+        setPoetryStat(prev => ({ ...prev, results: response, isLoading: false }));
+      } else {
+        throw new Error("Shagun seems to be pondering... Please try again.");
+      }
+    } catch (e) {
+      console.error(e);
+      setPoetryStat(prev => ({ 
+        ...prev, 
+        error: "Apologies, my muse is quiet at the moment. Please try again.",
+        isLoading: false 
+      }));
+    }
+  };
+
+  // Live news functionality
+  const loadLiveNews = async () => {
+    setNewsState(prev => ({ ...prev, isLoading: true }));
+    
+    try {
+      const newsPrompt = `Generate exactly 10 realistic, current news headlines for today (${new Date().toLocaleDateString()}). Make them diverse covering international, national, sports, technology, health, environment, entertainment, business, science, and politics. 
+
+Format as JSON array with this structure:
+{
+  "headlines": [
+    {"title": "🌍 Headline text here", "source": "News Source", "category": "international"},
+    {"title": "🏠 Headline text here", "source": "News Source", "category": "national"},
+    {"title": "⚽ Headline text here", "source": "Sports Network", "category": "sports"},
+    {"title": "💻 Headline text here", "source": "Tech Today", "category": "technology"},
+    {"title": "💊 Headline text here", "source": "Health News", "category": "health"},
+    {"title": "🌱 Headline text here", "source": "Environment Today", "category": "environment"},
+    {"title": "🎬 Headline text here", "source": "Entertainment Weekly", "category": "entertainment"},
+    {"title": "💼 Headline text here", "source": "Business Times", "category": "business"},
+    {"title": "🔬 Headline text here", "source": "Science Daily", "category": "science"},
+    {"title": "🏛️ Headline text here", "source": "Political Review", "category": "politics"}
+  ]
+}`;
+
+      const response = await InvokeLLM({
+        prompt: newsPrompt,
+        add_context_from_internet: true,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            headlines: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  title: { type: "string" },
+                  source: { type: "string" },
+                  category: { type: "string" }
+                }
+              }
+            }
+          }
+        }
+      });
+
+      if (response && response.headlines) {
+        setNewsState(prev => ({ 
+          ...prev, 
+          headlines: response.headlines, 
+          isLoading: false 
+        }));
+      } else {
+        throw new Error('Unable to fetch news');
+      }
+    } catch (error) {
+      console.error('Error loading news:', error);
+      // Fallback to mock news
+      const mockNews = [
+        { title: "🌍 Global Climate Summit Reaches Historic Agreement on Carbon Emissions", source: "World News Network", category: "international" },
+        { title: "🚀 SpaceX Successfully Launches New Mission to International Space Station", source: "Space Today", category: "science" },
+        { title: "💊 Medical Breakthrough: New Treatment Shows Promise for Alzheimer's Disease", source: "Health Times", category: "health" },
+        { title: "🌱 India Launches Massive Tree Plantation Drive Across 50 Cities", source: "Environmental Herald", category: "environment" },
+        { title: "🎨 Ancient Artifacts Discovered in Archaeological Dig Near Delhi", source: "History Channel", category: "national" },
+        { title: "⚽ World Cup Preparations Begin as Teams Announce Final Squads", source: "Sports Central", category: "sports" },
+        { title: "💻 Tech Giant Announces Revolutionary AI Assistant for Education", source: "Tech Weekly", category: "technology" },
+        { title: "🎬 Bollywood Film Wins International Recognition at Film Festival", source: "Entertainment Buzz", category: "entertainment" },
+        { title: "💼 Stock Market Reaches New High as Technology Sector Surges", source: "Business Times", category: "business" },
+        { title: "🏛️ Parliament Passes Major Infrastructure Development Bill", source: "Political Review", category: "politics" }
+      ];
+      setNewsState(prev => ({ ...prev, headlines: mockNews, isLoading: false }));
+    }
+  };
+
+  // Modal functions
+  const openModal = (modalName) => {
+    setModals(prev => ({ ...prev, [modalName]: true }));
+    if (modalName === 'news') {
+      loadLiveNews();
+    }
+  };
+
+  const closeModal = (modalName) => {
+    setModals(prev => ({ ...prev, [modalName]: false }));
+  };
+
+  // Helper functions
+  const checkSpecialDate = () => {
+    const today = new Date();
+    const month = today.getMonth() + 1;
+    const day = today.getDate();
+    const dateKey = `${month}-${day}`;
+    
+    if (specialDates[dateKey]) {
+      const special = specialDates[dateKey];
+      alert(`${special.emoji} ${special.title}\n\n${special.message}`);
+    }
+  };
+
+  const showDailyCompliment = () => {
+    const today = new Date();
+    const dayOfYear = Math.floor((today - new Date(today.getFullYear(), 0, 0)) / 1000 / 60 / 60 / 24);
+    return dailyCompliments[dayOfYear % dailyCompliments.length];
+  };
+
+  const showRandomCompliment = () => {
+    const randomIndex = Math.floor(Math.random() * randomCompliments.length);
+    return randomCompliments[randomIndex];
+  };
+
+  const updateStreakDisplay = () => {
+    return `🔥 ${appState.currentStreak} Day Streak`;
+  };
+
+  const countWords = (text) => {
+    return text.trim() === '' ? 0 : text.trim().split(/\s+/).length;
+  };
+
+  const validateNewsInputs = () => {
+    return Object.values(newsState.inputs).every(text => {
+      const wordCount = countWords(text || '');
+      return wordCount >= 10 && wordCount <= 20;
+    });
+  };
+
+  const submitNews = () => {
+    setAppState(prev => ({ 
+      ...prev, 
+      currentStreak: prev.currentStreak + 1,
+      lastCompletion: new Date().toDateString()
+    }));
+    
+    setNewsState(prev => ({ ...prev, inputs: {} }));
+    alert('🎯 Congratulations! News challenge completed! ' + showRandomCompliment());
+    closeModal('news');
+  };
+
+  const renderCalendarDays = () => {
+    const today = new Date();
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
+    const firstDay = new Date(currentYear, currentMonth, 1);
+    const lastDay = new Date(currentYear, currentMonth + 1, 0);
+    const startDate = new Date(firstDay);
+    startDate.setDate(startDate.getDate() - firstDay.getDay());
+    
+    const days = [];
+    const currentDate = new Date(startDate);
+    
+    for (let i = 0; i < 42; i++) {
+      const day = currentDate.getDate();
+      const month = currentDate.getMonth() + 1;
+      const isCurrentMonth = currentDate.getMonth() === currentMonth;
+      const isToday = currentDate.toDateString() === today.toDateString();
+      const dateKey = `${month}-${day}`;
+      const hasSpecialDate = specialDates[dateKey];
+      
+      days.push(
+        <div
+          key={i}
+          className={`h-16 flex items-center justify-center text-base font-bold rounded-2xl cursor-pointer transition-all duration-500 relative transform hover:scale-110 ${
+            isToday ? 'bg-gradient-to-br from-pink-400 via-purple-500 to-indigo-600 text-white shadow-2xl animate-pulse scale-110 border-4 border-white' :
+            hasSpecialDate ? 'bg-gradient-to-br from-yellow-300 via-orange-400 to-red-500 text-white hover:scale-125 shadow-xl animate-bounce border-2 border-yellow-200' :
+            isCurrentMonth ? 'text-gray-800 hover:bg-gradient-to-br hover:from-pink-100 hover:to-purple-100 bg-white bg-opacity-70 backdrop-blur-sm border border-pink-200' : 
+            'text-gray-400 bg-gray-100 bg-opacity-50'
+          }`}
+          onClick={() => {
+            if (hasSpecialDate) {
+              const special = specialDates[dateKey];
+              alert(`${special.emoji} ${special.title}\n\n${special.message}`);
+            }
+          }}
+          style={{
+            boxShadow: isToday ? '0 10px 30px rgba(255,20,147,0.5), inset 0 1px 0 rgba(255,255,255,0.3)' :
+                     hasSpecialDate ? '0 8px 25px rgba(255,165,0,0.4), inset 0 1px 0 rgba(255,255,255,0.3)' :
+                     isCurrentMonth ? '0 4px 15px rgba(255,105,180,0.2)' : 'none'
+          }}
+        >
+          <span className="relative z-10">{day}</span>
+          {hasSpecialDate && (
+            <>
+              <div className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 rounded-full animate-ping"></div>
+              <div className="absolute -top-2 -right-2 w-6 h-6 bg-red-600 rounded-full flex items-center justify-center text-white text-xs font-bold">!</div>
+              <div className="absolute inset-0 bg-gradient-to-r from-yellow-200 to-orange-200 opacity-30 rounded-2xl animate-pulse"></div>
+            </>
+          )}
+          {isToday && (
+            <>
+              <div className="absolute inset-0 animate-pulse bg-white opacity-20 rounded-2xl"></div>
+              <div className="absolute -inset-1 bg-gradient-to-r from-pink-400 to-purple-600 rounded-2xl opacity-30 blur-sm"></div>
+            </>
+          )}
+        </div>
+      );
+      
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    return days;
+  };
+
+  return (
+    <div 
+      className="min-h-screen font-comic overflow-x-hidden relative"
+      style={{
+        fontFamily: "'Comic Sans MS', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
+        background: 'linear-gradient(45deg, #FFE4E1, #FFF0F5, #E6E6FA, #F0F8FF)',
+        backgroundSize: '400% 400%',
+        animation: 'gradientShift 8s ease infinite'
+      }}
+    >
+      <style>{`
+        @keyframes gradientShift {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+        @keyframes float {
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-20px); }
+        }
+        @keyframes shimmer {
+          0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+          100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+        }
+        @keyframes sparkle {
+          0%, 100% { opacity: 0.3; transform: scale(1); }
+          50% { opacity: 0.7; transform: scale(1.1); }
+        }
+        @keyframes logoGlow {
+          from { text-shadow: 0 4px 15px rgba(0,0,0,0.4), 0 0 20px rgba(255,255,255,0.3); }
+          to { text-shadow: 0 4px 15px rgba(0,0,0,0.4), 0 0 30px rgba(255,255,255,0.6); }
+        }
+        @keyframes iconFloat {
+          0%, 100% { transform: translateY(0px) rotate(0deg); }
+          50% { transform: translateY(-5px) rotate(5deg); }
+        }
+        @keyframes bounce {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-15px); }
+        }
+        @keyframes pulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.1); }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(30px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes pianoKey {
+          0% { transform: translateY(0); }
+          50% { transform: translateY(2px); }
+          100% { transform: translateY(0); }
+        }
+        @keyframes magicalGlow {
+          0%, 100% { box-shadow: 0 0 10px rgba(255,20,147,0.3); }
+          50% { box-shadow: 0 0 25px rgba(255,20,147,0.8); }
+        }
+        @keyframes beatPulse {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.2); opacity: 0.8; }
+        }
+        .font-comic {
+          font-family: 'Comic Sans MS', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .piano-key {
+          transition: all 0.1s ease;
+        }
+        .piano-key:active {
+          animation: pianoKey 0.1s ease;
+        }
+        .magical-calendar-day {
+          animation: magicalGlow 2s ease-in-out infinite;
+        }
+        .rhythm-indicator {
+          animation: beatPulse 0.5s ease;
+        }
+        
+        /* Mobile optimizations */
+        @media (max-width: 768px) {
+          .text-4xl { font-size: 2rem; }
+          .text-3xl { font-size: 1.5rem; }
+          .text-2xl { font-size: 1.25rem; }
+          .piano-key { width: 12px; height: 32px; }
+          .piano-key.white-key { width: 14px; height: 36px; }
+          .grid { gap: 0.75rem; }
+        }
+        
+        /* Touch-friendly styles */
+        @media (hover: none) and (pointer: coarse) {
+          .hover\\:scale-105:hover { transform: scale(1.02); }
+          .hover\\:scale-110:hover { transform: scale(1.05); }
+          .hover\\:scale-125:hover { transform: scale(1.1); }
+        }
+      `}</style>
+
+      {/* Floating decorative elements */}
+      <div 
+        className="fixed top-0 left-0 right-0 p-2 text-center text-lg opacity-60 z-0"
+        style={{ animation: 'float 6s ease-in-out infinite' }}
+      >
+        🌸 🦋 ✨ 🌺 🎀 💖 🌙 ⭐ 🌸 🦋 ✨ 🌺 🎀 💖
+      </div>
+      
+      <div 
+        className="fixed bottom-0 left-0 right-0 p-2 text-center text-base opacity-50 z-0"
+        style={{ animation: 'float 8s ease-in-out infinite reverse' }}
+      >
+        🎭 🎪 🎨 🎼 🎯 🎊 🎈 🎁 🎭 🎪 🎨 🎼 🎯 🎊 🎈 🎁
+      </div>
+
+      {/* Home Screen */}
+      <div className="max-w-md mx-auto relative z-10" style={{ 
+        background: 'rgba(255, 255, 255, 0.35)',
+        backdropFilter: 'blur(20px)',
+        borderRadius: '30px',
+        boxShadow: '0 15px 35px rgba(255,20,147,0.3)',
+        border: '2px solid rgba(255,255,255,0.4)',
+        margin: '10px',
+        position: 'relative',
+        overflow: 'hidden'
+      }}>
+        {/* Shimmer effect */}
+        <div 
+          className="absolute top-0 left-0 w-full h-full pointer-events-none"
+          style={{
+            background: 'linear-gradient(45deg, transparent, rgba(255,255,255,0.1), transparent)',
+            animation: 'shimmer 3s linear infinite'
+          }}
+        />
+        
+        {/* Header */}
+        <div 
+          className="text-white text-center py-6 px-6 relative overflow-hidden"
+          style={{
+            background: 'linear-gradient(135deg, #FF1493, #FF69B4, #9966FF, #00BFFF)',
+            borderRadius: '30px 30px 0 0'
+          }}
+        >
+          <div 
+            className="absolute inset-0 flex items-center justify-center text-2xl opacity-30"
+            style={{ animation: 'sparkle 4s linear infinite' }}
+          >
+            ✨ 🌟 ⭐ 💫 ✨ 🌟 ⭐ 💫 ✨ 🌟 ⭐ 💫
+          </div>
+          
+          <h1 
+            className="text-4xl font-bold mb-4 relative z-10"
+            style={{
+              textShadow: '0 4px 15px rgba(0,0,0,0.4)',
+              animation: 'logoGlow 2s ease-in-out infinite alternate'
+            }}
+          >
+            Pari Point ✨💖
+          </h1>
+          <p className="text-lg opacity-95 relative z-10 font-bold">
+            🌈 Your magical companion app 🦋
+          </p>
+        </div>
+
+        {/* Main Content */}
+        <div className="p-6">
+          {/* Daily Compliment */}
+          <div 
+            className="text-center p-6 rounded-2xl mb-6 min-h-32 flex flex-col items-center justify-center border-2 relative overflow-hidden"
+            style={{
+              background: 'linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,182,193,0.4))',
+              borderColor: '#FFB6C1',
+              boxShadow: '0 8px 25px rgba(255,105,180,0.2)'
+            }}
+          >
+            <div className="absolute top-1 left-0 right-0 text-center text-base opacity-60">
+              🌸 🌺 🌻 🌷 🌸 🌺 🌻 🌷
+            </div>
+            <div className="absolute bottom-1 left-0 right-0 text-center text-sm opacity-60">
+              🎀 💕 🎀 💕 🎀 💕 🎀 💕
+            </div>
+            
+            <div className="text-lg font-bold text-purple-900 z-10 relative">
+              {showDailyCompliment()}
+            </div>
+            <button
+              onClick={() => alert(showRandomCompliment())}
+              className="mt-4 px-5 py-3 rounded-full text-white font-bold text-sm transition-all duration-300 hover:transform hover:-translate-y-1 z-10 relative"
+              style={{
+                background: 'linear-gradient(135deg, #FFD700, #FFA500)',
+                boxShadow: '0 4px 15px rgba(255,165,0,0.3)'
+              }}
+            >
+              🎲 Random Magic ✨
+            </button>
+          </div>
+
+          {/* Features Grid */}
+          <div className="grid grid-cols-2 gap-5 mb-6">
+            {[
+              { icon: '🎹✨', title: 'Magic Piano', desc: '🎵 Play beautiful melodies 🎶', modal: 'piano' },
+              { icon: '📰🔥', title: 'News Streak', desc: '📊 Daily news challenge 🏆', modal: 'news' },
+              { icon: '👑💎', title: "Shagun's Verses", desc: '📝 Queen of rhymes & poetry 🌟', modal: 'rhyme' },
+              { icon: '🎨🖌️', title: 'Art Studio', desc: '🌈 Create digital masterpieces 🎪', modal: 'art' },
+              { icon: '📅🌸', title: 'Magic Calendar', desc: '🎊 Special dates & events 🎈', modal: 'calendar' },
+              { icon: '✨🦋', title: 'About Pari', desc: '💫 Learn more magic 🌙', action: 'about' }
+            ].map((feature, index) => (
+              <div
+                key={index}
+                onClick={() => feature.modal ? openModal(feature.modal) : alert('🌟✨ Pari Point - Your Magical Companion! ✨🌟\n\n🎭 A vibrant, interactive app created with love and sparkles!')}
+                className="text-center p-6 rounded-2xl cursor-pointer transition-all duration-400 border-2 relative overflow-hidden hover:transform hover:-translate-y-2 hover:scale-105"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,182,193,0.4))',
+                  borderColor: 'rgba(255,255,255,0.6)',
+                  boxShadow: '0 8px 25px rgba(255,105,180,0.2)'
+                }}
+              >
+                <div 
+                  className="text-3xl mb-3 block"
+                  style={{ animation: 'iconFloat 3s ease-in-out infinite' }}
+                >
+                  {feature.icon}
+                </div>
+                <div className="font-bold text-purple-900 mb-2 text-base">
+                  {feature.title}
+                </div>
+                <div className="text-sm text-gray-600 font-medium">
+                  {feature.desc}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Enhanced Piano Modal with Rhythm Features */}
+      {modals.piano && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-6xl max-h-[90vh] overflow-hidden border-4 border-white shadow-2xl">
+            <div 
+              className="text-white text-center p-6 relative text-2xl font-bold"
+              style={{ background: 'linear-gradient(135deg, #FF1493, #FF69B4, #9966FF, #00BFFF)' }}
+            >
+              🎹✨ Magic Piano Studio 🎶
+              <button
+                onClick={() => closeModal('piano')}
+                className="absolute right-5 top-5 w-9 h-9 rounded-full border-2 border-white bg-white bg-opacity-20 text-white text-xl flex items-center justify-center hover:bg-white hover:text-pink-600 transition-all duration-300 hover:rotate-90"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="p-6 max-h-[calc(90vh-100px)] overflow-y-auto">
+              {/* Enhanced Piano Controls */}
+              <div className="mb-6 flex flex-wrap gap-4 justify-center items-center">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-bold text-purple-900">🎵 Tone:</label>
+                  <select
+                    value={selectedTone}
+                    onChange={(e) => setSelectedTone(e.target.value)}
+                    className="px-4 py-2 border-2 border-pink-400 rounded-lg bg-gradient-to-r from-purple-100 to-pink-100 font-bold text-purple-900"
+                  >
+                    {Object.keys(pianoTones).map(tone => (
+                      <option key={tone} value={tone}>
+                        {tone === 'Grand Piano' && '🎹'} 
+                        {tone === 'Electric Piano' && '⚡'} 
+                        {tone === 'Organ' && '🎪'} 
+                        {tone === 'Synthesizer' && '🎛️'} 
+                        {tone === 'Bell' && '🔔'} 
+                        {tone === 'Strings' && '🎻'} 
+                        {tone}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-bold text-purple-900">🎼 Octave:</label>
+                  <select
+                    value={pianoState.currentOctave}
+                    onChange={(e) => setPianoState(prev => ({ ...prev, currentOctave: parseInt(e.target.value) }))}
+                    className="px-3 py-2 border-2 border-pink-400 rounded-lg bg-gradient-to-r from-blue-100 to-purple-100 font-bold text-purple-900"
+                  >
+                    {[2, 3, 4, 5, 6, 7].map(octave => (
+                      <option key={octave} value={octave}>Octave {octave} {octave === 4 && '(Middle)'}</option>
+                    ))}
+                  </select>
+                </div>
+                
+                <button
+                  onClick={() => setPianoState(prev => ({ ...prev, isRecording: !prev.isRecording, recordedNotes: prev.isRecording ? prev.recordedNotes : [] }))}
+                  className={`px-6 py-3 rounded-full font-bold transition-all duration-300 text-white ${
+                    pianoState.isRecording 
+                      ? 'bg-gradient-to-r from-red-500 to-red-600 animate-pulse shadow-lg' 
+                      : 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700'
+                  }`}
+                >
+                  {pianoState.isRecording ? '⏹️ Stop Recording' : '🎙️ Start Recording'}
+                </button>
+                
+                {pianoState.recordedNotes.length > 0 && (
+                  <button
+                    onClick={playRecordedNotes}
+                    disabled={pianoState.isPlaying}
+                    className="px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-full font-bold hover:from-blue-600 hover:to-blue-700 disabled:from-gray-400 disabled:to-gray-500 transition-all duration-300"
+                  >
+                    {pianoState.isPlaying ? '🎵 Playing...' : '▶️ Play Recording'}
+                  </button>
+                )}
+                
+                {pianoState.recordedNotes.length > 0 && (
+                  <button
+                    onClick={() => setPianoState(prev => ({ ...prev, recordedNotes: [] }))}
+                    className="px-6 py-3 bg-gradient-to-r from-gray-500 to-gray-600 text-white rounded-full font-bold hover:from-gray-600 hover:to-gray-700 transition-all duration-300"
+                  >
+                    🗑️ Clear Recording
+                  </button>
+                )}
+              </div>
+
+              {/* Rhythm Section */}
+              <div 
+                className="mb-6 p-4 rounded-2xl border-2 border-orange-400"
+                style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,165,0,0.2))' }}
+              >
+                <h3 className="text-lg font-bold text-orange-900 mb-4 text-center flex items-center justify-center gap-2">
+                  🥁 Rhythm Studio 🎵
+                  {rhythmState.isPlaying && (
+                    <div className="rhythm-indicator w-4 h-4 bg-orange-500 rounded-full"></div>
+                  )}
+                </h3>
+                
+                <div className="flex flex-wrap gap-4 justify-center items-center mb-4">
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-bold text-orange-900">🎼 Pattern:</label>
+                    <select
+                      value={rhythmState.currentRhythm}
+                      onChange={(e) => setRhythmState(prev => ({ ...prev, currentRhythm: e.target.value }))}
+                      className="px-3 py-2 border-2 border-orange-400 rounded-lg bg-gradient-to-r from-orange-100 to-yellow-100 font-bold text-orange-900"
+                    >
+                      <option value="basic">🥁 Basic Beat</option>
+                      <option value="rock">🎸 Rock Beat</option>
+                      <option value="jazz">🎷 Jazz Swing</option>
+                      <option value="latin">🎺 Latin Groove</option>
+                      <option value="funk">🎹 Funk Pattern</option>
+                      <option value="waltz">💃 Waltz (3/4)</option>
+                    </select>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-bold text-orange-900">⚡ BPM:</label>
+                    <input
+                      type="range"
+                      min="60"
+                      max="180"
+                      value={rhythmState.currentBPM}
+                      onChange={(e) => setRhythmState(prev => ({ ...prev, currentBPM: parseInt(e.target.value) }))}
+                      className="w-20"
+                    />
+                    <span className="text-sm font-bold text-orange-900 w-12">{rhythmState.currentBPM}</span>
+                  </div>
+                  
+                  <button
+                    onClick={rhythmState.isPlaying ? stopRhythm : startRhythm}
+                    className={`px-6 py-3 rounded-full font-bold transition-all duration-300 text-white ${
+                      rhythmState.isPlaying 
+                        ? 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700' 
+                        : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700'
+                    }`}
+                  >
+                    {rhythmState.isPlaying ? '⏹️ Stop Rhythm' : '▶️ Start Rhythm'}
+                  </button>
+                </div>
+                
+                {/* Beat Indicator */}
+                <div className="flex justify-center gap-2">
+                  {rhythmPatterns[rhythmState.currentRhythm].map((beat, index) => (
+                    <div
+                      key={index}
+                      className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-sm font-bold transition-all duration-200 ${
+                        rhythmState.isPlaying && index === rhythmState.beatCount 
+                          ? 'bg-orange-500 text-white border-orange-600 scale-125' 
+                          : beat 
+                            ? 'bg-orange-200 text-orange-800 border-orange-400' 
+                            : 'bg-gray-100 text-gray-400 border-gray-300'
+                      }`}
+                    >
+                      {beat ? '●' : '○'}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Enhanced Piano Keys */}
+              <div 
+                className="rounded-3xl p-8 mb-6 relative overflow-hidden"
+                style={{ 
+                  background: 'linear-gradient(135deg, #1a1a2e, #16213e, #0f3460)',
+                  boxShadow: '0 20px 40px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1)'
+                }}
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-purple-600/10 via-pink-600/10 to-blue-600/10 animate-pulse"></div>
+                
+                <div className="relative z-10">
+                  {/* White Keys - Enhanced */}
+                  <div className="flex justify-center gap-1 mb-4">
+                    {['C', 'D', 'E', 'F', 'G', 'A', 'B'].map((note) => (
+                      <button
+                        key={note}
+                        onMouseDown={() => playNote(note)}
+                        onTouchStart={(e) => { e.preventDefault(); playNote(note); }}
+                        className="piano-key white-key group relative w-16 h-40 rounded-b-2xl border-2 border-gray-300 shadow-2xl transition-all duration-150 transform hover:scale-105 active:scale-95"
+                        style={{ 
+                          background: 'linear-gradient(to bottom, #ffffff, #f8f9fa, #e9ecef)',
+                          boxShadow: '0 8px 16px rgba(0,0,0,0.2), inset 0 2px 4px rgba(255,255,255,0.8), inset 0 -2px 4px rgba(0,0,0,0.1)'
+                        }}
+                      >
+                        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 text-gray-600 font-bold text-lg group-hover:text-purple-600 transition-colors">
+                          {note}
+                        </div>
+                        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-purple-100 opacity-0 group-hover:opacity-30 transition-opacity rounded-b-2xl"></div>
+                      </button>
+                    ))}
+                  </div>
+                  
+                  {/* Black Keys - Enhanced */}
+                  <div className="flex justify-center absolute top-8 left-1/2 transform -translate-x-1/2">
+                    <div className="flex gap-8">
+                      <div className="flex gap-3">
+                        {['C#', 'D#'].map((note) => (
+                          <button
+                            key={note}
+                            onMouseDown={() => playNote(note)}
+                            onTouchStart={(e) => { e.preventDefault(); playNote(note); }}
+                            className="piano-key group relative w-10 h-24 rounded-b-xl shadow-2xl transition-all duration-150 transform hover:scale-105 active:scale-95"
+                            style={{ 
+                              background: 'linear-gradient(to bottom, #2c2c2c, #1a1a1a, #000000)',
+                              boxShadow: '0 6px 12px rgba(0,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.1)'
+                            }}
+                          >
+                            <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 text-white font-bold text-sm group-hover:text-pink-300 transition-colors">
+                              {note}
+                            </div>
+                            <div className="absolute inset-0 bg-gradient-to-b from-pink-500/20 to-purple-500/20 opacity-0 group-hover:opacity-50 transition-opacity rounded-b-xl"></div>
+                          </button>
+                        ))}
+                      </div>
+                      <div className="w-16"></div>
+                      <div className="flex gap-3">
+                        {['F#', 'G#', 'A#'].map((note) => (
+                          <button
+                            key={note}
+                            onMouseDown={() => playNote(note)}
+                            onTouchStart={(e) => { e.preventDefault(); playNote(note); }}
+                            className="piano-key group relative w-10 h-24 rounded-b-xl shadow-2xl transition-all duration-150 transform hover:scale-105 active:scale-95"
+                            style={{ 
+                              background: 'linear-gradient(to bottom, #2c2c2c, #1a1a1a, #000000)',
+                              boxShadow: '0 6px 12px rgba(0,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.1)'
+                            }}
+                          >
+                            <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 text-white font-bold text-sm group-hover:text-pink-300 transition-colors">
+                              {note}
+                            </div>
+                            <div className="absolute inset-0 bg-gradient-to-b from-pink-500/20 to-purple-500/20 opacity-0 group-hover:opacity-50 transition-opacity rounded-b-xl"></div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Enhanced Piano Info */}
+              <div 
+                className="text-center p-8 rounded-3xl border-2"
+                style={{ 
+                  background: 'linear-gradient(135deg, rgba(255,255,255,0.95), rgba(255,182,193,0.6))',
+                  borderColor: '#FF69B4',
+                  boxShadow: '0 10px 30px rgba(255,20,147,0.2)'
+                }}
+              >
+                <h3 className="text-2xl font-bold text-purple-900 mb-4 flex items-center justify-center gap-2">
+                  🎹 Your Enchanted Piano Studio 🎶
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm text-gray-700">
+                  <div className="space-y-3">
+                    <p className="flex items-center gap-2"><span className="text-lg">🎵</span> Choose from 6 magical instrument tones!</p>
+                    <p className="flex items-center gap-2"><span className="text-lg">🎼</span> Explore 6 different octaves (2-7)</p>
+                    <p className="flex items-center gap-2"><span className="text-lg">🎙️</span> Record your magical compositions</p>
+                    <p className="flex items-center gap-2"><span className="text-lg">🥁</span> 6 rhythm patterns with BPM control</p>
+                  </div>
+                  <div className="space-y-3">
+                    <p className="flex items-center gap-2"><span className="text-lg">▶️</span> Playback with full tone memory</p>
+                    <p className="flex items-center gap-2"><span className="text-lg">✨</span> Enhanced audio with filters & effects</p>
+                    <p className="flex items-center gap-2"><span className="text-lg">📱</span> Full mobile and touch support</p>
+                    <p className="flex items-center gap-2"><span className="text-lg">🌟</span> Create symphonies of pure magic!</p>
+                  </div>
+                </div>
+                
+                <div className="mt-6 p-4 bg-white bg-opacity-70 rounded-2xl">
+                  <p className="text-purple-800 font-bold text-sm">
+                    🎭 Current: <span className="text-pink-600">{selectedTone}</span> • 
+                    Octave <span className="text-pink-600">{pianoState.currentOctave}</span> • 
+                    {rhythmState.isPlaying && <span className="text-orange-600">🥁 {rhythmState.currentRhythm} @ {rhythmState.currentBPM} BPM</span>}
+                    {pianoState.recordedNotes.length > 0 && <span className="text-green-600"> • {pianoState.recordedNotes.length} notes recorded</span>}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Art Studio Modal - Mobile Enhanced */}
+      {modals.art && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-6xl max-h-[90vh] overflow-hidden border-4 border-white shadow-2xl">
+            <div 
+              className="text-white text-center p-6 relative text-2xl font-bold"
+              style={{ background: 'linear-gradient(135deg, #FF1493, #FF69B4, #9966FF, #00BFFF)' }}
+            >
+              🎨🖌️ Magic Art Studio 🌈
+              <button
+                onClick={() => closeModal('art')}
+                className="absolute right-5 top-5 w-9 h-9 rounded-full border-2 border-white bg-white bg-opacity-20 text-white text-xl flex items-center justify-center hover:bg-white hover:text-pink-600 transition-all duration-300 hover:rotate-90"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="p-6 max-h-[calc(90vh-100px)] overflow-y-auto">
+              <div className="flex flex-col lg:flex-row gap-6">
+                {/* Art Tools */}
+                <div className="w-full lg:w-64 space-y-6 flex-shrink-0">
+                  {/* Color Palette */}
+                  <div 
+                    className="p-4 rounded-2xl"
+                    style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,182,193,0.4))' }}
+                  >
+                    <h3 className="font-bold text-purple-900 mb-3">🎨 Colors</h3>
+                    <div className="grid grid-cols-5 gap-2">
+                      {artColors.map((color) => (
+                        <button
+                          key={color}
+                          onClick={() => setArtState(prev => ({ ...prev, currentColor: color }))}
+                          className={`w-8 h-8 rounded-full border-2 transition-all duration-200 hover:scale-110 ${
+                            artState.currentColor === color ? 'border-gray-800 scale-110' : 'border-gray-300'
+                          }`}
+                          style={{ backgroundColor: color }}
+                        />
+                      ))}
+                    </div>
+                    <div className="mt-3">
+                      <input
+                        type="color"
+                        value={artState.currentColor}
+                        onChange={(e) => setArtState(prev => ({ ...prev, currentColor: e.target.value }))}
+                        className="w-full h-8 rounded border-2 border-gray-300"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Brush Size */}
+                  <div 
+                    className="p-4 rounded-2xl"
+                    style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,182,193,0.4))' }}
+                  >
+                    <h3 className="font-bold text-purple-900 mb-3">🖌️ Brush Size</h3>
+                    <input
+                      type="range"
+                      min="1"
+                      max="50"
+                      value={artState.brushSize}
+                      onChange={(e) => setArtState(prev => ({ ...prev, brushSize: parseInt(e.target.value) }))}
+                      className="w-full"
+                    />
+                    <div className="text-center text-sm text-gray-700 mt-2">
+                      Size: {artState.brushSize}px
+                    </div>
+                    <div 
+                      className="mx-auto mt-2 rounded-full border border-gray-300"
+                      style={{ 
+                        width: `${Math.min(artState.brushSize, 30)}px`, 
+                        height: `${Math.min(artState.brushSize, 30)}px`,
+                        backgroundColor: artState.currentColor
+                      }}
+                    />
+                  </div>
+
+                  {/* Tools */}
+                  <div 
+                    className="p-4 rounded-2xl"
+                    style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,182,193,0.4))' }}
+                  >
+                    <h3 className="font-bold text-purple-900 mb-3">🛠️ Tools</h3>
+                    <div className="space-y-2">
+                      {artTools.map((tool) => (
+                        <button
+                          key={tool}
+                          onClick={() => setArtState(prev => ({ ...prev, tool }))}
+                          className={`w-full px-3 py-2 rounded-lg font-medium transition-all duration-200 ${
+                            artState.tool === tool 
+                              ? 'bg-purple-500 text-white transform scale-105' 
+                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          }`}
+                        >
+                          {tool === 'brush' && '🖌️'} 
+                          {tool === 'pencil' && '✏️'} 
+                          {tool === 'eraser' && '🧹'} 
+                          {tool === 'fill' && '🪣'} 
+                          {tool.charAt(0).toUpperCase() + tool.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div 
+                    className="p-4 rounded-2xl"
+                    style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,182,193,0.4))' }}
+                  >
+                    <h3 className="font-bold text-purple-900 mb-3">⚡ Actions</h3>
+                    <button
+                      onClick={clearCanvas}
+                      className="w-full px-3 py-2 bg-red-500 text-white rounded-lg font-medium hover:bg-red-600 transition-colors"
+                    >
+                      🗑️ Clear Canvas
+                    </button>
+                  </div>
+                </div>
+
+                {/* Canvas Area */}
+                <div className="flex-1 w-full lg:w-auto">
+                  <div 
+                    className="rounded-2xl p-4 h-full min-h-[400px]"
+                    style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,182,193,0.4))' }}
+                  >
+                    <canvas
+                      ref={canvasRef}
+                      width="600"
+                      height="400"
+                      className="border-2 border-gray-300 rounded-lg bg-white cursor-crosshair w-full h-full"
+                      onMouseDown={startDrawing}
+                      onMouseMove={draw}
+                      onMouseUp={stopDrawing}
+                      onMouseLeave={stopDrawing}
+                      onTouchStart={startDrawing}
+                      onTouchMove={draw}
+                      onTouchEnd={stopDrawing}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Art Info */}
+              <div 
+                className="mt-6 text-center p-4 rounded-2xl"
+                style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,182,193,0.4))' }}
+              >
+                <h3 className="text-xl font-bold text-purple-900 mb-3">📚 Art Studio Magic Features 🌟</h3>
+                <div className="text-sm text-gray-700 space-y-1">
+                  <p>🎨 Touch and drag to paint your masterpiece!</p>
+                  <p>🌈 Choose colors, adjust brush size, and let your creativity flow!</p>
+                  <p>📱 Full mobile support with touch gestures!</p>
+                  <p>✨ Create magical art with sparkles and joy!</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Ultra Enhanced Calendar Modal */}
+      {modals.calendar && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-6xl max-h-[95vh] overflow-hidden border-4 border-white shadow-2xl relative">
+            {/* Magical Background Effects */}
+            <div className="absolute inset-0 bg-gradient-to-br from-pink-50 via-purple-50 to-indigo-50 opacity-70"></div>
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-pink-100/30 to-transparent animate-pulse"></div>
+            
+            <div 
+              className="text-white text-center p-8 relative text-3xl font-bold overflow-hidden"
+              style={{ 
+                background: 'linear-gradient(135deg, #FF1493, #FF69B4, #9966FF, #00BFFF, #32CD32, #FFD700)',
+                backgroundSize: '300% 300%',
+                animation: 'gradientShift 6s ease infinite'
+              }}
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-yellow-200/20 via-pink-200/20 to-purple-200/20 animate-pulse"></div>
+              
+              <div className="relative z-10 flex items-center justify-center gap-4">
+                <span className="animate-bounce">📅</span>
+                <span>Magic Calendar 2025</span>
+                <span className="animate-bounce delay-150">🌸</span>
+                <span className="animate-spin">✨</span>
+                <span className="animate-bounce delay-300">🎊</span>
+              </div>
+              
+              <p className="text-lg opacity-95 mt-2 relative z-10">
+                ✨ Where every day sparkles with possibility! ✨
+              </p>
+              
+              <button
+                onClick={() => closeModal('calendar')}
+                className="absolute right-6 top-6 w-12 h-12 rounded-full border-3 border-white bg-white bg-opacity-20 text-white text-2xl flex items-center justify-center hover:bg-white hover:text-pink-600 transition-all duration-300 hover:rotate-90 hover:scale-110"
+                style={{ backdropFilter: 'blur(10px)' }}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="p-8 max-h-[calc(95vh-140px)] overflow-y-auto relative z-10">
+              {/* Magical Calendar Header */}
+              <div className="text-center mb-8">
+                <h2 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 mb-2">
+                  {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                </h2>
+                <div className="flex justify-center items-center gap-2 text-purple-700 font-medium">
+                  <span className="animate-pulse">🌟</span>
+                  <span>Discover magical moments every single day!</span>
+                  <span className="animate-pulse">🌟</span>
+                </div>
+              </div>
+
+              {/* Ultra Enhanced Calendar Grid */}
+              <div 
+                className="rounded-3xl p-8 mb-8 relative overflow-hidden"
+                style={{ 
+                  background: 'linear-gradient(135deg, rgba(255,255,255,0.95), rgba(255,182,193,0.6))',
+                  boxShadow: '0 20px 40px rgba(255,20,147,0.2), inset 0 1px 0 rgba(255,255,255,0.5)',
+                  border: '2px solid rgba(255,255,255,0.8)'
+                }}
+              >
+                {/* Floating decorative elements */}
+                <div className="absolute top-2 left-4 text-2xl opacity-40 animate-bounce">🦋</div>
+                <div className="absolute top-4 right-8 text-xl opacity-40 animate-pulse">✨</div>
+                <div className="absolute bottom-4 left-8 text-xl opacity-40 animate-bounce delay-300">🌺</div>
+                <div className="absolute bottom-2 right-4 text-2xl opacity-40 animate-pulse delay-150">🌸</div>
+                
+                {/* Days of week header - Enhanced */}
+                <div className="grid grid-cols-7 gap-3 mb-6">
+                  {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((day, index) => (
+                    <div key={day} className="text-center font-bold text-purple-900 py-4 rounded-xl bg-gradient-to-b from-purple-100 to-pink-100 shadow-sm border border-purple-200">
+                      <div className="text-lg">{day.slice(0, 3)}</div>
+                      <div className="text-xs opacity-70">{['☀️', '🌙', '⭐', '🌟', '💫', '🌈', '✨'][index]}</div>
+                    </div>
+                  ))}
+                </div>
+                
+                {/* Calendar days - Ultra Enhanced */}
+                <div className="grid grid-cols-7 gap-3">
+                  {renderCalendarDays()}
+                </div>
+              </div>
+
+              {/* Ultra Enhanced Special Events List */}
+              <div 
+                className="rounded-3xl p-8 mb-8 relative overflow-hidden"
+                style={{ 
+                  background: 'linear-gradient(135deg, rgba(255,255,255,0.95), rgba(255,182,193,0.6))',
+                  boxShadow: '0 20px 40px rgba(255,20,147,0.2), inset 0 1px 0 rgba(255,255,255,0.5)',
+                  border: '2px solid rgba(255,255,255,0.8)'
+                }}
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-yellow-100/30 via-pink-100/30 to-purple-100/30 animate-pulse"></div>
+                
+                <h3 className="text-3xl font-bold text-center mb-8 relative z-10">
+                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-600 via-pink-600 to-purple-600">
+                    🎉 Magical Celebrations Throughout the Year 🎊
+                  </span>
+                </h3>
+                
+                <div className="grid gap-6 relative z-10">
+                  {Object.entries(specialDates).map(([date, info]) => {
+                    const [month, day] = date.split('-');
+                    return (
+                      <div 
+                        key={date}
+                        className="group flex items-center gap-6 p-6 rounded-2xl cursor-pointer transition-all duration-500 transform hover:-translate-y-2 hover:scale-105 relative overflow-hidden"
+                        style={{ 
+                          background: 'linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,240,245,0.8))',
+                          boxShadow: '0 10px 25px rgba(255,20,147,0.15), inset 0 1px 0 rgba(255,255,255,0.5)',
+                          border: '2px solid rgba(255,182,193,0.3)'
+                        }}
+                        onClick={() => alert(`${info.emoji} ${info.title}\n\n${info.message}`)}
+                      >
+                        <div className="absolute inset-0 bg-gradient-to-r from-pink-100/0 via-purple-100/20 to-pink-100/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                        
+                        <div className="relative z-10 flex-shrink-0">
+                          <div className="text-6xl animate-bounce group-hover:animate-pulse" style={{ filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.1))' }}>
+                            {info.emoji}
+                          </div>
+                          <div className="absolute -inset-2 bg-gradient-to-r from-yellow-200 to-pink-200 opacity-20 rounded-full animate-ping group-hover:animate-pulse"></div>
+                        </div>
+                        
+                        <div className="flex-1 relative z-10">
+                          <div className="text-2xl font-bold text-purple-900 mb-2 group-hover:text-pink-700 transition-colors">
+                            {info.title}
+                          </div>
+                          <div className="flex items-center gap-2 text-purple-700 mb-3">
+                            <span className="text-lg">📅</span>
+                            <span className="font-semibold">
+                              {new Date(2025, parseInt(month) - 1, parseInt(day)).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}
+                            </span>
+                            <span className="animate-pulse">•</span>
+                            <span className="text-sm italic">2025</span>
+                          </div>
+                          <div className="text-gray-700 mb-4 leading-relaxed">
+                            {info.message.length > 150 ? info.message.substring(0, 150) + '...' : info.message}
+                          </div>
+                          <div className="flex items-center gap-2 text-pink-600 font-bold group-hover:text-pink-700">
+                            <span className="animate-pulse">💫</span>
+                            <span>Click for the full magical message!</span>
+                            <span className="animate-pulse">💖</span>
+                          </div>
+                        </div>
+                        
+                        <div className="flex-shrink-0 relative z-10">
+                          <div className="w-4 h-4 bg-gradient-to-r from-pink-400 to-purple-500 rounded-full animate-pulse group-hover:scale-125 transition-transform"></div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Ultra Enhanced Calendar Features */}
+              <div 
+                className="text-center p-8 rounded-3xl relative overflow-hidden"
+                style={{ 
+                  background: 'linear-gradient(135deg, rgba(255,255,255,0.95), rgba(255,182,193,0.6))',
+                  boxShadow: '0 20px 40px rgba(255,20,147,0.2), inset 0 1px 0 rgba(255,255,255,0.5)',
+                  border: '2px solid rgba(255,255,255,0.8)'
+                }}
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-100/20 via-purple-100/20 to-pink-100/20 animate-pulse"></div>
+                
+                <h3 className="text-2xl font-bold text-purple-900 mb-6 relative z-10">
+                  📚 Your Magical Calendar Features 🌟
+                </h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6 relative z-10">
+                  {[
+                    { icon: '🎂', title: 'Birthday Magic', desc: 'Special birthday celebrations with love' },
+                    { icon: '🎊', title: 'Festival Joy', desc: 'Holiday and festival reminders' },
+                    { icon: '✨', title: 'Daily Sparkles', desc: 'Magical moments every single day' },
+                    { icon: '💖', title: 'Love Messages', desc: 'Heartwarming appreciation notes' }
+                  ].map((feature, index) => (
+                    <div 
+                      key={index}
+                      className="group p-6 rounded-2xl transition-all duration-300 hover:transform hover:-translate-y-2 hover:scale-105"
+                      style={{ 
+                        background: 'linear-gradient(135deg, rgba(255,255,255,0.8), rgba(255,240,245,0.6))',
+                        boxShadow: '0 8px 20px rgba(255,20,147,0.1)',
+                        border: '1px solid rgba(255,182,193,0.3)'
+                      }}
+                    >
+                      <div className="text-3xl mb-3 group-hover:animate-bounce">{feature.icon}</div>
+                      <div className="font-bold text-purple-900 mb-2">{feature.title}</div>
+                      <div className="text-sm text-gray-700">{feature.desc}</div>
+                    </div>
+                  ))}
+                </div>
+                
+                <div className="relative z-10 p-4 rounded-2xl" style={{ background: 'rgba(255,255,255,0.7)' }}>
+                  <p className="text-purple-800 font-bold flex items-center justify-center gap-2">
+                    <span className="animate-pulse">💫</span>
+                    <span>Click on highlighted dates for magical surprises!</span>
+                    <span className="animate-pulse">🎁</span>
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rhyme Modal - Enhanced Shagun */}
+      {modals.rhyme && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-hidden border-4 border-white shadow-2xl">
+            <div 
+              className="text-white text-center p-6 relative text-2xl font-bold"
+              style={{ background: 'linear-gradient(135deg, #FF1493, #FF69B4, #9966FF, #00BFFF)' }}
+            >
+              👑💎 Shagun - Queen of Verses 🌟
+              <button
+                onClick={() => closeModal('rhyme')}
+                className="absolute right-5 top-5 w-9 h-9 rounded-full border-2 border-white bg-white bg-opacity-20 text-white text-xl flex items-center justify-center hover:bg-white hover:text-pink-600 transition-all duration-300 hover:rotate-90"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="p-6 max-h-[calc(90vh-100px)] overflow-y-auto">
+              {/* Poetry Section */}
+              <div 
+                className="mb-6 p-5 rounded-2xl border-2"
+                style={{
+                  background: 'linear-gradient(135deg, #FFF8DC, #F0E68C)',
+                  borderColor: '#FFD700'
+                }}
+              >
+                <div className="text-center mb-4 text-purple-900 text-xl font-bold">
+                  📝✨ Royal Poetry Notepad 🦋
+                </div>
+                <textarea
+                  className="w-full min-h-32 p-4 border-2 border-pink-400 rounded-xl text-base resize-vertical bg-white font-comic"
+                  placeholder="Write your magical verses here... 🌸&#10;&#10;Let your creativity flow like a river of stars! ✨&#10;Shagun will help you find the perfect words... 💫"
+                  value={poetryState.text}
+                  onChange={(e) => setPoetryStat(prev => ({ ...prev, text: e.target.value }))}
+                />
+                
+                <div 
+                  className="mt-4 p-4 bg-white bg-opacity-80 rounded-xl border-l-4 border-purple-500"
+                >
+                  <div className="bg-purple-500 text-white p-3 rounded-2xl text-sm mb-2">
+                    👑 Welcome to your royal writing chamber! I'm here to help you craft beautiful verses. Start writing and I'll suggest rhymes and improvements! 🌺
+                  </div>
+                </div>
+              </div>
+
+              {/* Rhyme Tool */}
+              <div 
+                className="p-5 rounded-2xl border-2"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,182,193,0.4))',
+                  borderColor: '#9966FF'
+                }}
+              >
+                <div className="flex gap-3 mb-5">
+                  <input
+                    type="text"
+                    className="flex-1 p-3 border-2 border-pink-600 rounded-xl text-sm"
+                    placeholder="🔍 Enter a word for royal analysis..."
+                    value={poetryState.selectedWord}
+                    onChange={(e) => setPoetryStat(prev => ({ ...prev, selectedWord: e.target.value }))}
+                  />
+                  <button
+                    onClick={() => getShagunSuggestions(poetryState.selectedWord, 'rhymes')}
+                    disabled={poetryState.isLoading}
+                    className="bg-pink-600 text-white px-5 py-3 rounded-xl font-bold hover:bg-pink-700 disabled:bg-gray-400"
+                  >
+                    🔎 Rhymes
+                  </button>
+                  <button
+                    onClick={() => getShagunSuggestions(poetryState.selectedWord, 'synonyms')}
+                    disabled={poetryState.isLoading}
+                    className="bg-teal-600 text-white px-5 py-3 rounded-xl font-bold hover:bg-teal-700 disabled:bg-gray-400"
+                  >
+                    📚 Synonyms
+                  </button>
+                </div>
+
+                {poetryState.error && (
+                  <div className="text-red-600 text-sm mb-4">{poetryState.error}</div>
+                )}
+
+                {poetryState.isLoading && (
+                  <div className="text-center text-gray-600 p-8">
+                    <div className="animate-spin w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+                    <p className="italic">Shagun is consulting her vast library of words...</p>
+                  </div>
+                )}
+
+                {poetryState.results && (
+                  <div className="space-y-4">
+                    <div className="text-center bg-white bg-opacity-70 rounded-xl p-4 border border-emerald-200">
+                      <p className="italic text-emerald-800 flex items-center justify-center gap-2 font-medium">
+                        ✨ "{poetryState.results.compliment}"
+                      </p>
+                    </div>
+
+                    <div 
+                      className="p-5 bg-white bg-opacity-80 rounded-xl border border-stone-200 max-h-96 overflow-y-auto"
+                      style={{ scrollbarWidth: 'thin' }}
+                    >
+                      {poetryState.results.type === 'rhymes' ? (
+                        Object.entries(poetryState.results.data).map(([category, words]) => (
+                          words && words.length > 0 && (
+                            <div key={category} className="mb-6">
+                              <h4 className="font-semibold text-stone-700 capitalize mb-3 flex items-center gap-2">
+                                ⭐ {category.replace(/_/g, ' ')}
+                                <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full">
+                                  {words.length} words
+                                </span>
+                              </h4>
+                              <div className="grid grid-cols-2 gap-2">
+                                {words.map((word, index) => (
+                                  <div
+                                    key={`${word}-${index}`}
+                                    onClick={() => setPoetryStat(prev => ({ ...prev, selectedWord: word }))}
+                                    className="bg-emerald-100 text-emerald-800 border border-emerald-200 hover:bg-emerald-200 cursor-pointer justify-center py-2 px-3 rounded-lg text-center text-sm font-medium transition-colors"
+                                  >
+                                    {word}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )
+                        ))
+                      ) : (
+                        <div className="space-y-6">
+                          {poetryState.results.data.direct_synonyms && (
+                            <div>
+                              <h4 className="font-semibold text-stone-700 mb-3 flex items-center gap-2">
+                                ❤️ Direct Synonyms
+                                <span className="text-xs bg-teal-100 text-teal-700 px-2 py-1 rounded-full">
+                                  {poetryState.results.data.direct_synonyms.length} words
+                                </span>
+                              </h4>
+                              <div className="grid grid-cols-2 gap-2">
+                                {poetryState.results.data.direct_synonyms.map((word, index) => (
+                                  <div
+                                    key={`${word}-${index}`}
+                                    onClick={() => setPoetryStat(prev => ({ ...prev, selectedWord: word }))}
+                                    className="bg-teal-100 text-teal-800 border border-teal-200 hover:bg-teal-200 cursor-pointer justify-center py-2 px-3 rounded-lg text-center text-sm font-medium transition-colors"
+                                  >
+                                    {word}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {poetryState.results.data.creative_sparks && (
+                            <div>
+                              <h4 className="font-semibold text-stone-700 mb-3 flex items-center gap-2">
+                                💡 Creative Sparks
+                                <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">
+                                  {poetryState.results.data.creative_sparks.length} ideas
+                                </span>
+                              </h4>
+                              <div className="space-y-3">
+                                {poetryState.results.data.creative_sparks.map((spark, index) => (
+                                  <div key={index} className="bg-gradient-to-r from-yellow-50 to-orange-50 p-3 rounded-lg border border-yellow-200">
+                                    <p className="text-stone-700 text-sm italic leading-relaxed">{spark}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* News Modal - Enhanced with Live News */}
+      {modals.news && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-hidden border-4 border-white shadow-2xl">
+            <div 
+              className="text-white text-center p-6 relative text-2xl font-bold"
+              style={{ background: 'linear-gradient(135deg, #FF1493, #FF69B4, #9966FF, #00BFFF)' }}
+            >
+              📰🔥 Daily News Challenge 🏆
+              <button
+                onClick={() => closeModal('news')}
+                className="absolute right-5 top-5 w-9 h-9 rounded-full border-2 border-white bg-white bg-opacity-20 text-white text-xl flex items-center justify-center hover:bg-white hover:text-pink-600 transition-all duration-300 hover:rotate-90"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="p-6 max-h-[calc(90vh-100px)] overflow-y-auto">
+              <div 
+                className="text-2xl font-bold text-pink-600 text-center mb-5 p-4 rounded-2xl border-2 border-yellow-400"
+                style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,182,193,0.4))' }}
+              >
+                {updateStreakDisplay()}
+              </div>
+              
+              <div 
+                className="p-5 rounded-2xl mb-5"
+                style={{ background: 'linear-gradient(135deg, #4169E1, #1E90FF)' }}
+              >
+                <h3 className="text-xl text-white text-center font-bold mb-2">📺 Today's Top Headlines 🌟</h3>
+                <p className="text-white text-center">Stay informed with the latest news! 📊</p>
+              </div>
+              
+              <div 
+                className="max-h-80 overflow-y-auto mb-5 bg-gray-50 rounded-2xl p-5"
+              >
+                {newsState.isLoading ? (
+                  <div className="text-center p-10 text-gray-600">
+                    📡 Loading today's headlines... 🔄
+                  </div>
+                ) : (
+                  newsState.headlines.map((item, index) => (
+                    <div key={index} className="p-4 border-b border-gray-200 border-l-4 border-pink-600 mb-4 bg-white rounded-xl shadow-sm">
+                      <div className="font-bold text-purple-900 mb-1 text-sm">{item.title}</div>
+                      <div className="text-xs text-gray-600">📰 {item.source}</div>
+                      <div className="text-xs text-gray-500 italic">{new Date().toLocaleDateString()}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* News Challenge Form */}
+              <div className="space-y-5">
+                {['🌍 International News', '🏠 National News', '⚽ Sports News'].map((category, catIndex) => (
+                  <div 
+                    key={catIndex}
+                    className="p-5 rounded-2xl border-2 border-pink-400"
+                    style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,182,193,0.4))' }}
+                  >
+                    <div className="text-base font-bold text-purple-900 mb-4 text-center">{category}</div>
+                    {[1, 2].map((inputNum) => {
+                      const inputKey = `${catIndex}-${inputNum}`;
+                      const text = newsState.inputs[inputKey] || '';
+                      const wordCount = countWords(text);
+                      return (
+                        <div key={inputNum} className="mb-3">
+                          <input
+                            type="text"
+                            className="w-full p-3 mb-2 border-2 border-gray-300 rounded-xl text-sm transition-colors focus:outline-none focus:border-pink-600"
+                            placeholder={`📰 Summarize ${category.toLowerCase()} in 10-20 words...`}
+                            value={text}
+                            onChange={(e) => setNewsState(prev => ({
+                              ...prev,
+                              inputs: { ...prev.inputs, [inputKey]: e.target.value }
+                            }))}
+                            style={{
+                              borderColor: wordCount < 10 || wordCount > 20 ? '#ef4444' : '#d1d5db'
+                            }}
+                          />
+                          <div className={`text-xs text-right ${wordCount < 10 || wordCount > 20 ? 'text-red-600 font-bold' : 'text-gray-600'}`}>
+                            {wordCount} words
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+                
+                <button
+                  onClick={submitNews}
+                  disabled={!validateNewsInputs()}
+                  className="w-full p-4 text-white border-none rounded-3xl text-base font-bold cursor-pointer transition-all duration-300 mt-5 hover:transform hover:-translate-y-1 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  style={{
+                    background: validateNewsInputs() 
+                      ? 'linear-gradient(135deg, #FF1493, #FF69B4, #9966FF, #00BFFF)' 
+                      : '#ccc',
+                    boxShadow: validateNewsInputs() ? '0 8px 25px rgba(255,20,147,0.3)' : 'none'
+                  }}
+                >
+                  🎯 Complete Today's Challenge
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
